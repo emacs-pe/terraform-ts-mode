@@ -77,6 +77,14 @@
   :type 'natnum
   :safe 'natnump)
 
+(defcustom terraform-ts-mode-hook nil
+  "Hook run after entering `terraform-ts-mode'."
+  :type 'hook
+  :options '(eglot-ensure
+             flymake-mode
+             hs-minor-mode
+             outline-minor-mode))
+
 (defcustom terraform-ts-flymake-command '("terraform" "fmt" "-no-color" "-")
   "External tool used to check Terraform source code.
 This is a non-empty list of strings: the checker tool possibly
