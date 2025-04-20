@@ -99,8 +99,8 @@ the Terraform source to be checked as its standard input."
   (let ((table (make-syntax-table)))
     (modify-syntax-entry ?#  "< b" table)
     (modify-syntax-entry ?\n "> b" table)
-    (modify-syntax-entry ?/  ". 124" table)
-    (modify-syntax-entry ?*  ". 23b" table)
+    (modify-syntax-entry ?/  ". 124b" table)
+    (modify-syntax-entry ?*  ". 23" table)
     table)
   "Syntax table for `terraform-ts-mode'.")
 
@@ -152,7 +152,10 @@ the Terraform source to be checked as its standard input."
 
    :language 'terraform
    :feature 'misc-punctuation
-   '(([(ellipsis) "\?" "=>"]) @font-lock-misc-punctuation-face)
+   '([(ellipsis) "\?" "=>"] @font-lock-misc-punctuation-face
+     [(heredoc_identifier)              ; END
+      (heredoc_start)                   ; << or <<-
+      ] @font-lock-delimiter-face)
 
    :language 'terraform
    :feature 'constant
@@ -269,6 +272,8 @@ this command is analyzed for error messages."
     ;; Comments.
     (setq-local comment-start "# ")
     (setq-local comment-start-skip "#+\\s-*")
+    (setq-local block-comment-start "/*")
+    (setq-local block-comment-end "*/")
 
     ;; Indent.
     (setq-local indent-tabs-mode nil
@@ -294,12 +299,14 @@ this command is analyzed for error messages."
                 (regexp-opt '("block" "attribute")))
     (setq-local treesit-defun-name-function #'terraform-ts--treesit-defun-name)
 
+    ;; Align.
+    (setq-local align-indent-before-aligning t)
+
     ;; Flymake.
     (add-hook 'flymake-diagnostic-functions #'terraform-ts-flymake nil 'local)
 
     (treesit-major-mode-setup)))
 
-;;;###autoload
 (when (treesit-ready-p 'terraform)
   (add-to-list 'auto-mode-alist '("\\.tf\\(vars\\)?\\'" . terraform-ts-mode)))
 
