@@ -77,6 +77,16 @@
   :type 'natnum
   :safe 'natnump)
 
+(defcustom terraform-ts-flymake-command '("terraform" "fmt" "-no-color" "-")
+  "External tool used to check Terraform source code.
+This is a non-empty list of strings: the checker tool possibly
+followed by required arguments.  Once launched it will receive
+the Terraform source to be checked as its standard input."
+  :type '(choice (const :tag "Hclfmt"     ("hclfmt" "-check"))
+                 (const :tag "OpenTofu"   ("tofu" "fmt" "-no-color" "-"))
+                 (const :tag "Terraform"  ("terraform" "fmt" "-no-color" "-"))
+                 (cons  :tag "Set Custom" (string :tag "Command") (repeat (string :tag "Argument")))))
+
 (defvar terraform-ts--syntax-table
   (let ((table (make-syntax-table)))
     (modify-syntax-entry ?#  "< b" table)
@@ -193,6 +203,52 @@ Return nil if there is no name or if NODE is not a defun node."
            (concat (treesit-node-text (treesit-node-child label 1) t) " " (treesit-node-text (treesit-node-child label2 1)))
          (treesit-node-text (or (treesit-node-child label 1) (treesit-search-subtree node "identifier"))))))))
 
+(defvar-local terraform-ts--flymake-process nil)
+
+;;;###autoload
+(defun terraform-ts-flymake (report-fn &rest _args)
+  "Terraform backend for Flymake.
+Launch `terraform-ts-flymake-command' (which see) and pass to its
+standard input the contents of the current buffer.  The output of
+this command is analyzed for error messages."
+  (unless (executable-find (car terraform-ts-flymake-command))
+    (error "Cannot find the Terraform flymake program: %s" (car terraform-ts-flymake-command)))
+
+  (when (process-live-p terraform-ts--flymake-process)
+    (kill-process terraform-ts--flymake-process))
+
+  (let ((source (current-buffer)))
+    (save-restriction
+      (widen)
+      (setq
+       terraform-ts--flymake-process
+       (make-process
+        :name "terraform-flymake" :noquery t :connection-type 'pipe
+        :buffer (generate-new-buffer " *terraform-ts-flymake*")
+        :command terraform-ts-flymake-command
+        :sentinel
+        (lambda (proc _event)
+          (when (eq 'exit (process-status proc))
+            (unwind-protect
+                (if (with-current-buffer source (eq proc terraform-ts--flymake-process))
+                    (with-current-buffer (process-buffer proc)
+                      (goto-char (point-min))
+                      (cl-loop
+                       while (search-forward-regexp
+                              "^Error: .+\n\n  on <stdin> line \\([[:digit:]]+\\)\\(?:, in .+\\)?:\\(?:\n\\(?: +.+\\)*\\)+\\(?2:\\(?:.+\n\\)+\\)$"
+                              nil t)
+                       for msg = (match-string 2)
+                       for (beg . end) = (flymake-diag-region
+                                          source
+                                          (string-to-number (match-string 1)))
+                       collect (flymake-make-diagnostic source beg end :error msg)
+                       into diags
+                       finally (funcall report-fn diags)))
+                  (flymake-log :debug "Canceling obsolete check %s" proc))
+              (kill-buffer (process-buffer proc)))))))
+      (process-send-region terraform-ts--flymake-process (point-min) (point-max))
+      (process-send-eof terraform-ts--flymake-process))))
+
 ;;;###autoload
 (define-derived-mode terraform-ts-mode prog-mode "Terraform"
   "Major mode for editing Terraform files, powered by tree-sitter.
@@ -229,6 +285,9 @@ Return nil if there is no name or if NODE is not a defun node."
     (setq-local treesit-defun-type-regexp
                 (regexp-opt '("block" "attribute")))
     (setq-local treesit-defun-name-function #'terraform-ts--treesit-defun-name)
+
+    ;; Flymake.
+    (add-hook 'flymake-diagnostic-functions #'terraform-ts-flymake nil 'local)
 
     (treesit-major-mode-setup)))
 
