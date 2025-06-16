@@ -67,6 +67,13 @@
     (declare-function treesit-parser-create "treesit.c")
     (declare-function treesit-search-subtree "treesit.c")))
 
+(add-to-list
+ 'treesit-language-source-alist
+ '(terraform "https://github.com/tree-sitter-grammars/tree-sitter-hcl"
+             :commit "fad991865fee927dd1de5e172fb3f08ac674d914" ; v1.2.0
+             :source-dir "dialects/terraform/src")
+ t)
+
 (defgroup terraform-ts nil
   "Major mode for editing Terraform files."
   :prefix "terraform-ts-"
